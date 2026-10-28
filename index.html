@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="ja">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1">
+  <title>QRコードスキャンデモ</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      max-width: 700px;
+      margin: 24px auto;
+      padding: 0 16px;
+      line-height: 1.5;
+    }
+
+    button {
+      font: inherit;
+      padding: 6px;
+      margin-right: 6px;
+    }
+
+    #reader {
+      width: 100%;
+      max-width: 480px;
+    }
+
+    pre {
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+
+    .hint {
+      color: #555;
+      font-size: .92rem;
+    }
+  </style>
+</head>
+
+<body>
+  <h1>QRコードスキャンデモ</h1>
+  <button id="start">カメラを起動</button>
+  <button id="stop"
+          disabled>カメラを停止</button>
+  <div id="reader"></div>
+  <h2>スキャン結果</h2>
+  <pre id="scanResult">まだスキャンされていません</pre>
+  <p class="hint">カメラ機能は通常、HTTPS または localhost 環境での実行と、ブラウザでのカメラアクセスの許可が必要です。</p>
+
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <script>
+    const $ = (id) => document.getElementById(id)
+    let scanner = null
+    let isScanning = false
+
+    async function startScanner() {
+      if (isScanning) return
+      $("scanResult").textContent = "カメラを起動中…"
+
+      try {
+        scanner = new Html5Qrcode("reader")
+        const cameras = await Html5Qrcode.getCameras()
+        if (!cameras || cameras.length === 0) {
+          throw new Error("利用可能なカメラが見つかりませんでした。")
+        }
+
+        const preferred = cameras.find(c => /back|rear|environment|アウトカメラ|背面/i.test(c.label))
+        const cameraId = (preferred || cameras[0]).id
+
+        await scanner.start(
+          cameraId,
+          { fps: 10, qrbox: { width: 240, height: 240 } },
+          (decodedText) => {
+            try {
+              const parsed = JSON.parse(decodedText)
+              $("scanResult").textContent =
+                "元のテキスト：\n" + decodedText +
+                "\n\n解析されたデータ：\n" + JSON.stringify(parsed, null, 2)
+            } catch {
+              $("scanResult").textContent =
+                "スキャンされましたが、有効なJSONではありません：\n" + decodedText
+            }
+            stopScanner()
+          },
+          () => {
+            // フレーム内にQRコードが検出されない場合は処理不要
+          }
+        )
+
+        isScanning = true
+        $("start").disabled = true
+        $("stop").disabled = false
+        $("scanResult").textContent = "カメラが起動しました。QRコードをスキャン枠にかざしてください。"
+      } catch (err) {
+        $("scanResult").textContent =
+          "起動に失敗しました：" + (err && err.message ? err.message : String(err)) +
+          "\nページが HTTPS または localhost で開かれており、カメラのアクセスが許可されているか確認してください。"
+        if (scanner) {
+          try { await scanner.clear() } catch { }
+          scanner = null
+        }
+      }
+    }
+
+    async function stopScanner() {
+      if (scanner && isScanning) {
+        try { await scanner.stop() } catch { }
+        try { await scanner.clear() } catch { }
+      } else if (scanner) {
+        try { await scanner.clear() } catch { }
+      }
+      scanner = null
+      isScanning = false
+      $("start").disabled = false
+      $("stop").disabled = true
+    }
+
+    $("start").addEventListener("click", startScanner)
+    $("stop").addEventListener("click", stopScanner);
+  </script>
+</body>
+
+</html>
